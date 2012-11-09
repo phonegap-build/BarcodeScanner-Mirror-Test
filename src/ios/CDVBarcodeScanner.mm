@@ -21,7 +21,7 @@
 
 //------------------------------------------------------------------------------
 // Delegate to handle orientation functions
-// 
+//
 //------------------------------------------------------------------------------
 @protocol CDVBarcodeScannerOrientationDelegate <NSObject>
 
@@ -66,8 +66,9 @@
 @property (nonatomic)         BOOL                        is1D;
 @property (nonatomic)         BOOL                        is2D;
 @property (nonatomic)         BOOL                        capturing;
+@property (nonatomic, retain) NSString*                   orientation;
 
-- (id)initWithPlugin:(CDVBarcodeScanner*)plugin callback:(NSString*)callback parentViewController:(UIViewController*)parentViewController alterateOverlayXib:(NSString *)alternateXib;
+- (id)initWithPlugin:(CDVBarcodeScanner*)plugin callback:(NSString*)callback parentViewController:(UIViewController*)parentViewController alterateOverlayXib:(NSString *)alternateXib orientation:(NSString*)orientation;
 - (void)scanBarcode;
 - (void)barcodeScanSucceeded:(NSString*)text format:(NSString*)format;
 - (void)barcodeScanFailed:(NSString*)message;
@@ -92,8 +93,9 @@
 @property (nonatomic, retain) IBOutlet UIView* overlayView;
 // unsafe_unretained is equivalent to assign - used to prevent retain cycles in the property below
 @property (nonatomic, unsafe_unretained) id orientationDelegate;
+@property (nonatomic, retain) NSString*         orientation;
 
-- (id)initWithProcessor:(CDVbcsProcessor*)processor alternateOverlay:(NSString *)alternateXib;
+- (id)initWithProcessor:(CDVbcsProcessor*)processor alternateOverlay:(NSString *)alternateXib orientation:(NSString*)orientation;
 - (void)startCapturing;
 - (UIView*)buildOverlayView;
 - (UIImage*)buildReticleImage;
@@ -124,14 +126,16 @@
     CDVbcsProcessor* processor;
     NSString*       callback;
     NSString*       capabilityError;
+    NSString*       orientation = nil;
     
     callback = [arguments objectAtIndex:0];
+    orientation = (NSString*) [arguments objectAtIndex:1];
     
-    // We allow the user to define an alternate xib file for loading the overlay. 
+    // We allow the user to define an alternate xib file for loading the overlay.
     NSString *overlayXib = nil;
-    if ( [arguments count] == 2 )
+    if ( [arguments count] == 3 )
     {
-        overlayXib = [arguments objectAtIndex:1];
+        overlayXib = [arguments objectAtIndex:2];
     }
     
     capabilityError = [self isScanNotPossible];
@@ -145,6 +149,7 @@
                  callback:callback
                  parentViewController:self.viewController
                  alterateOverlayXib:overlayXib
+                 orientation:orientation
                  ];
     
     // queue [processor scanBarcode] to run on the event loop
@@ -204,12 +209,14 @@
 @synthesize is1D                 = _is1D;
 @synthesize is2D                 = _is2D;
 @synthesize capturing            = _capturing;
+@synthesize orientation            = _orientation;
 
 //--------------------------------------------------------------------------
 - (id)initWithPlugin:(CDVBarcodeScanner*)plugin
             callback:(NSString*)callback
 parentViewController:(UIViewController*)parentViewController
-  alterateOverlayXib:(NSString *)alternateXib {
+  alterateOverlayXib:(NSString *)alternateXib
+         orientation:(NSString *)orientation{
     self = [super init];
     if (!self) return self;
     
@@ -217,6 +224,7 @@ parentViewController:(UIViewController*)parentViewController
     self.callback             = callback;
     self.parentViewController = parentViewController;
     self.alternateXib         = alternateXib;
+    self.orientation          = orientation;
     
     self.is1D      = YES;
     self.is2D      = YES;
@@ -248,7 +256,7 @@ parentViewController:(UIViewController*)parentViewController
         return;
     }
     
-    self.viewController = [[[CDVbcsViewController alloc] initWithProcessor: self alternateOverlay:self.alternateXib] autorelease];
+    self.viewController = [[[CDVbcsViewController alloc] initWithProcessor: self alternateOverlay:self.alternateXib orientation:self.orientation] autorelease];
     // here we set the orientation delegate to the MainViewController of the app (orientation controlled in the Project Settings)
     self.viewController.orientationDelegate = self.plugin.viewController;
     
@@ -605,9 +613,10 @@ parentViewController:(UIViewController*)parentViewController
 @synthesize shutterPressed = _shutterPressed;
 @synthesize alternateXib   = _alternateXib;
 @synthesize overlayView    = _overlayView;
+@synthesize orientation    = _orientation;
 
 //--------------------------------------------------------------------------
-- (id)initWithProcessor:(CDVbcsProcessor*)processor alternateOverlay:(NSString *)alternateXib {
+- (id)initWithProcessor:(CDVbcsProcessor*)processor alternateOverlay:(NSString *)alternateXib orientation:(NSString *)orientation {
     self = [super init];
     if (!self) return self;
     
@@ -615,6 +624,7 @@ parentViewController:(UIViewController*)parentViewController
     self.shutterPressed = NO;
     self.alternateXib = alternateXib;
     self.overlayView = nil;
+    self.orientation = orientation;
     return self;
 }
 
@@ -624,7 +634,8 @@ parentViewController:(UIViewController*)parentViewController
     self.processor = nil;
     self.shutterPressed = NO;
     self.alternateXib = nil;
-    self.overlayView = nil;      
+    self.overlayView = nil;
+    self.orientation = nil;
     [super dealloc];
 }
 
@@ -680,7 +691,7 @@ parentViewController:(UIViewController*)parentViewController
 }
 
 //--------------------------------------------------------------------------
-- (UIView *)buildOverlayViewFromXib 
+- (UIView *)buildOverlayViewFromXib
 {
     [[NSBundle mainBundle] loadNibNamed:self.alternateXib owner:self options:NULL];
     
@@ -690,7 +701,7 @@ parentViewController:(UIViewController*)parentViewController
         return nil;
     }
     
-    return self.overlayView;        
+    return self.overlayView;
 }
 
 //--------------------------------------------------------------------------
@@ -820,18 +831,46 @@ parentViewController:(UIViewController*)parentViewController
 #pragma mark CDVBarcodeScannerOrientationDelegate
 
 - (BOOL)shouldAutorotate
-{   
-    return NO;
+{
+    if (![@"portrait" isEqualToString:_orientation] && ![@"portrait" isEqualToString:_orientation]) {
+        if ((self.orientationDelegate != nil) && [self.orientationDelegate respondsToSelector:@selector(shouldAutorotate)]) {
+            return [self.orientationDelegate shouldAutorotate];
+        }
+        return YES;
+    }
+    else {
+        return NO;
+    }
 }
 
 - (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation
 {
-    return UIInterfaceOrientationLandscapeRight;
+    if ([@"landscape" isEqualToString:_orientation]) {
+        return UIInterfaceOrientationLandscapeLeft;
+    }
+    else if ([@"portrait" isEqualToString:_orientation]) {
+        return UIInterfaceOrientationPortrait;
+    }
+    else {
+        return [super preferredInterfaceOrientationForPresentation];
+    }
 }
 
 - (NSUInteger)supportedInterfaceOrientations
 {
-    return UIInterfaceOrientationMaskLandscape;
+    if ([@"landscape" isEqualToString:_orientation]) {
+        return UIInterfaceOrientationMaskLandscape;
+    }
+    else if ([@"portrait" isEqualToString:_orientation]) {
+        return UIInterfaceOrientationMaskPortrait;
+    }
+    else {
+        if ((self.orientationDelegate != nil) && [self.orientationDelegate respondsToSelector:@selector(supportedInterfaceOrientations)]) {
+            return [self.orientationDelegate supportedInterfaceOrientations];
+        }
+        return UIInterfaceOrientationMaskPortrait;
+    }
+    
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation

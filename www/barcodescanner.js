@@ -20,7 +20,7 @@ BarcodeScanner.Encode = {
 };
 
 //-------------------------------------------------------------------
-BarcodeScanner.prototype.scan = function(successCallback, errorCallback) {
+BarcodeScanner.prototype.scan = function(successCallback, errorCallback, options) {
     if (errorCallback == null) { errorCallback = function() {}}
 
     if (typeof errorCallback != "function")  {
@@ -33,7 +33,11 @@ BarcodeScanner.prototype.scan = function(successCallback, errorCallback) {
         return
     }
 
-    cordova.exec(successCallback, errorCallback, 'BarcodeScanner', 'scan', []);
+    if (typeof options != 'object') {
+        options = {};
+    }
+
+    cordova.exec(successCallback, errorCallback, 'BarcodeScanner', 'scan', [options.orientation]);
 };
 
 //-------------------------------------------------------------------
